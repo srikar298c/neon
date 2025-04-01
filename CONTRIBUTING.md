@@ -1,84 +1,93 @@
-# How to contribute
+## Setting up the environment
 
-Howdy! Usual good software engineering practices apply. Write
-tests. Write comments. Follow standard Rust coding practices where
-possible. Use `cargo fmt` and `cargo clippy` to tidy up formatting.
+This repository uses [`yarn@v1`](https://classic.yarnpkg.com/lang/en/docs/install).
+Other package managers may work but are not officially supported for development.
 
-There are soft spots in the code, which could use cleanup,
-refactoring, additional comments, and so forth. Let's try to raise the
-bar, and clean things up as we go. Try to leave code in a better shape
-than it was before.
+To set up the repository, run:
 
-## Pre-commit hook
-
-We have a sample pre-commit hook in `pre-commit.py`.
-To set it up, run:
-
-```bash
-ln -s ../../pre-commit.py .git/hooks/pre-commit
+```sh
+$ yarn
+$ yarn build
 ```
 
-This will run following checks on staged files before each commit:
-- `rustfmt`
-- checks for Python files, see [obligatory checks](/docs/sourcetree.md#obligatory-checks).
+This will install all the required dependencies and build output files to `dist/`.
 
-There is also a separate script `./run_clippy.sh` that runs `cargo clippy` on the whole project
-and `./scripts/reformat` that runs all formatting tools to ensure the project is up to date.
+## Modifying/Adding code
 
-If you want to skip the hook, run `git commit` with `--no-verify` option.
+Most of the SDK is generated code. Modifications to code will be persisted between generations, but may
+result in merge conflicts between manual patches and changes from the generator. The generator will never
+modify the contents of the `src/lib/` and `examples/` directories.
 
-## Submitting changes
+## Adding and running examples
 
-1. Get at least one +1 on your PR before you push.
+All files in the `examples/` directory are not modified by the generator and can be freely edited or added to.
 
-   For simple patches, it will only take a minute for someone to review
-it.
+```ts
+// add an example to examples/<your-example>.ts
 
-2. Don't force push small changes after making the PR ready for review.
-Doing so will force readers to re-read your entire PR, which will delay
-the review process.
+#!/usr/bin/env -S npm run tsn -T
+…
+```
 
-3. Always keep the CI green.
+```sh
+$ chmod +x examples/<your-example>.ts
+# run the example against your api
+$ yarn tsn -T examples/<your-example>.ts
+```
 
-   Do not push, if the CI failed on your PR. Even if you think it's not
-your patch's fault. Help to fix the root cause if something else has
-broken the CI, before pushing.
+## Using the repository from source
 
-*Happy Hacking!*
+If you’d like to use the repository from source, you can either install from git or link to a cloned repository:
 
-# How to run a CI pipeline on Pull Requests from external contributors
-_An instruction for maintainers_
+To install via git:
 
-## TL;DR:
-- Review the PR
-- If and only if it looks **safe** (i.e. it doesn't contain any malicious code which could expose secrets or harm the CI), then:
-    - Press the "Approve and run" button in GitHub UI
-    - Add the `approved-for-ci-run` label to the PR
-    - Currently draft PR will skip e2e test (only for internal contributors). After turning the PR 'Ready to Review' CI will trigger e2e test
-      - Add `run-e2e-tests-in-draft` label to run e2e test in draft PR (override above behaviour)
-      - The `approved-for-ci-run` workflow will add `run-e2e-tests-in-draft` automatically to run e2e test for external contributors
+```sh
+$ npm install git+ssh://git@github.com:srikar298c/neon.git
+```
 
-Repeat all steps after any change to the PR.
-- When the changes are ready to get merged — merge the original PR (not the internal one)
+Alternatively, to link a local copy of the repo:
 
-## Longer version:
+```sh
+# Clone
+$ git clone https://www.github.com/srikar298c/neon
+$ cd neon
 
-GitHub Actions triggered by the `pull_request` event don't share repository secrets with the forks (for security reasons).
-So, passing the CI pipeline on Pull Requests from external contributors is impossible.
+# With yarn
+$ yarn link
+$ cd ../my-package
+$ yarn link bms
 
-We're using the following approach to make it work:
-- After the review, assign the `approved-for-ci-run` label to the PR if changes look safe
-- A GitHub Action will create an internal branch and a new PR with the same changes (for example, for a PR `#1234`, it'll be a branch `ci-run/pr-1234`)
-- Because the PR is created from the internal branch, it is able to access repository secrets (that's why it's crucial to make sure that the PR doesn't contain any malicious code that could expose our secrets or intentionally harm the CI)
-- The label gets removed automatically, so to run CI again with new changes, the label should be added again (after the review)
+# With pnpm
+$ pnpm link --global
+$ cd ../my-package
+$ pnpm link -—global bms
+```
 
-For details see [`approved-for-ci-run.yml`](.github/workflows/approved-for-ci-run.yml)
+## Running tests
 
-## How do I make build-tools image "pinned"
+Most tests require you to [set up a mock server](https://github.com/stoplightio/prism) against the OpenAPI spec to run the tests.
 
-It's possible to update the `pinned` tag of the `build-tools` image using the `pin-build-tools-image.yml` workflow.
+```sh
+$ npx prism mock path/to/your/openapi.yml
+```
 
-```bash
-gh workflow -R neondatabase/neon run pin-build-tools-image.yml \
-            -f from-tag=cc98d9b00d670f182c507ae3783342bd7e64c31e
+```sh
+$ yarn run test
+```
+
+## Linting and formatting
+
+This repository uses [prettier](https://www.npmjs.com/package/prettier) and
+[eslint](https://www.npmjs.com/package/eslint) to format the code in the repository.
+
+To lint:
+
+```sh
+$ yarn lint
+```
+
+To format and fix all lint issues automatically:
+
+```sh
+$ yarn fix
 ```

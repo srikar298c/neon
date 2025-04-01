@@ -1,315 +1,403 @@
-[![Neon](https://github.com/neondatabase/neon/assets/11527560/f15a17f0-836e-40c5-b35d-030606a6b660)](https://neon.tech)
+# Bms TypeScript API Library
 
+[![NPM version](https://img.shields.io/npm/v/bms.svg)](https://npmjs.org/package/bms) ![npm bundle size](https://img.shields.io/bundlephobia/minzip/bms)
 
+This library provides convenient access to the Bms REST API from server-side TypeScript or JavaScript.
 
-# Neon
+The REST API documentation can be found on [docs.bms.com](https://docs.bms.com). The full API of this library can be found in [api.md](api.md).
 
-Neon is a serverless open-source alternative to AWS Aurora Postgres. It separates storage and compute and substitutes the PostgreSQL storage layer by redistributing data across a cluster of nodes.
+It is generated with [Stainless](https://www.stainless.com/).
 
-## Quick start
-Try the [Neon Free Tier](https://neon.tech/github) to create a serverless Postgres instance. Then connect to it with your preferred Postgres client (psql, dbeaver, etc) or use the online [SQL Editor](https://neon.tech/docs/get-started-with-neon/query-with-neon-sql-editor/). See [Connect from any application](https://neon.tech/docs/connect/connect-from-any-app/) for connection instructions.
-
-Alternatively, compile and run the project [locally](#running-local-installation).
-
-## Architecture overview
-
-A Neon installation consists of compute nodes and the Neon storage engine. Compute nodes are stateless PostgreSQL nodes backed by the Neon storage engine.
-
-The Neon storage engine consists of two major components:
-- Pageserver: Scalable storage backend for the compute nodes.
-- Safekeepers: The safekeepers form a redundant WAL service that received WAL from the compute node, and stores it durably until it has been processed by the pageserver and uploaded to cloud storage.
-
-See developer documentation in [SUMMARY.md](/docs/SUMMARY.md) for more information.
-
-## Running local installation
-
-
-#### Installing dependencies on Linux
-1. Install build dependencies and other applicable packages
-
-* On Ubuntu or Debian, this set of packages should be sufficient to build the code:
-```bash
-apt install build-essential libtool libreadline-dev zlib1g-dev flex bison libseccomp-dev \
-libssl-dev clang pkg-config libpq-dev cmake postgresql-client protobuf-compiler \
-libcurl4-openssl-dev openssl python3-poetry lsof libicu-dev
-```
-* On Fedora, these packages are needed:
-```bash
-dnf install flex bison readline-devel zlib-devel openssl-devel \
-  libseccomp-devel perl clang cmake postgresql postgresql-contrib protobuf-compiler \
-  protobuf-devel libcurl-devel openssl poetry lsof libicu-devel libpq-devel python3-devel \
-  libffi-devel
-```
-* On Arch based systems, these packages are needed:
-```bash
-pacman -S base-devel readline zlib libseccomp openssl clang \
-postgresql-libs cmake postgresql protobuf curl lsof
-```
-
-Building Neon requires 3.15+ version of `protoc` (protobuf-compiler). If your distribution provides an older version, you can install a newer version from [here](https://github.com/protocolbuffers/protobuf/releases).
-
-2. [Install Rust](https://www.rust-lang.org/tools/install)
-```
-# recommended approach from https://www.rust-lang.org/tools/install
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
-
-#### Installing dependencies on macOS (12.3.1)
-1. Install XCode and dependencies
-```
-xcode-select --install
-brew install protobuf openssl flex bison icu4c pkg-config
-
-# add openssl to PATH, required for ed25519 keys generation in neon_local
-echo 'export PATH="$(brew --prefix openssl)/bin:$PATH"' >> ~/.zshrc
-```
-
-2. [Install Rust](https://www.rust-lang.org/tools/install)
-```
-# recommended approach from https://www.rust-lang.org/tools/install
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
-
-3. Install PostgreSQL Client
-```
-# from https://stackoverflow.com/questions/44654216/correct-way-to-install-psql-without-full-postgres-on-macos
-brew install libpq
-brew link --force libpq
-```
-
-#### Rustc version
-
-The project uses [rust toolchain file](./rust-toolchain.toml) to define the version it's built with in CI for testing and local builds.
-
-This file is automatically picked up by [`rustup`](https://rust-lang.github.io/rustup/overrides.html#the-toolchain-file) that installs (if absent) and uses the toolchain version pinned in the file.
-
-rustup users who want to build with another toolchain can use the [`rustup override`](https://rust-lang.github.io/rustup/overrides.html#directory-overrides) command to set a specific toolchain for the project's directory.
-
-non-rustup users most probably are not getting the same toolchain automatically from the file, so are responsible to manually verify that their toolchain matches the version in the file.
-Newer rustc versions most probably will work fine, yet older ones might not be supported due to some new features used by the project or the crates.
-
-#### Building on Linux
-
-1. Build neon and patched postgres
-```
-# Note: The path to the neon sources can not contain a space.
-
-git clone --recursive https://github.com/neondatabase/neon.git
-cd neon
-
-# The preferred and default is to make a debug build. This will create a
-# demonstrably slower build than a release build. For a release build,
-# use "BUILD_TYPE=release make -j`nproc` -s"
-# Remove -s for the verbose build log
-
-make -j`nproc` -s
-```
-
-#### Building on OSX
-
-1. Build neon and patched postgres
-```
-# Note: The path to the neon sources can not contain a space.
-
-git clone --recursive https://github.com/neondatabase/neon.git
-cd neon
-
-# The preferred and default is to make a debug build. This will create a
-# demonstrably slower build than a release build. For a release build,
-# use "BUILD_TYPE=release make -j`sysctl -n hw.logicalcpu` -s"
-# Remove -s for the verbose build log
-
-make -j`sysctl -n hw.logicalcpu` -s
-```
-
-#### Dependency installation notes
-To run the `psql` client, install the `postgresql-client` package or modify `PATH` and `LD_LIBRARY_PATH` to include `pg_install/bin` and `pg_install/lib`, respectively.
-
-To run the integration tests or Python scripts (not required to use the code), install
-Python (3.9 or higher), and install the python3 packages using `./scripts/pysync` (requires [poetry>=1.3](https://python-poetry.org/)) in the project directory.
-
-
-#### Running neon database
-1. Start pageserver and postgres on top of it (should be called from repo root):
-```sh
-# Create repository in .neon with proper paths to binaries and data
-# Later that would be responsibility of a package install script
-> cargo neon init
-Initializing pageserver node 1 at '127.0.0.1:64000' in ".neon"
-
-# start pageserver, safekeeper, and broker for their intercommunication
-> cargo neon start
-Starting neon broker at 127.0.0.1:50051.
-storage_broker started, pid: 2918372
-Starting pageserver node 1 at '127.0.0.1:64000' in ".neon".
-pageserver started, pid: 2918386
-Starting safekeeper at '127.0.0.1:5454' in '.neon/safekeepers/sk1'.
-safekeeper 1 started, pid: 2918437
-
-# create initial tenant and use it as a default for every future neon_local invocation
-> cargo neon tenant create --set-default
-tenant 9ef87a5bf0d92544f6fafeeb3239695c successfully created on the pageserver
-Created an initial timeline 'de200bd42b49cc1814412c7e592dd6e9' at Lsn 0/16B5A50 for tenant: 9ef87a5bf0d92544f6fafeeb3239695c
-Setting tenant 9ef87a5bf0d92544f6fafeeb3239695c as a default one
-
-# create postgres compute node
-> cargo neon endpoint create main
-
-# start postgres compute node
-> cargo neon endpoint start main
-Starting new endpoint main (PostgreSQL v14) on timeline de200bd42b49cc1814412c7e592dd6e9 ...
-Starting postgres at 'postgresql://cloud_admin@127.0.0.1:55432/postgres'
-
-# check list of running postgres instances
-> cargo neon endpoint list
- ENDPOINT  ADDRESS          TIMELINE                          BRANCH NAME  LSN        STATUS
- main      127.0.0.1:55432  de200bd42b49cc1814412c7e592dd6e9  main         0/16B5BA8  running
-```
-
-2. Now, it is possible to connect to postgres and run some queries:
-```text
-> psql -p 55432 -h 127.0.0.1 -U cloud_admin postgres
-postgres=# CREATE TABLE t(key int primary key, value text);
-CREATE TABLE
-postgres=# insert into t values(1,1);
-INSERT 0 1
-postgres=# select * from t;
- key | value
------+-------
-   1 | 1
-(1 row)
-```
-
-3. And create branches and run postgres on them:
-```sh
-# create branch named migration_check
-> cargo neon timeline branch --branch-name migration_check
-Created timeline 'b3b863fa45fa9e57e615f9f2d944e601' at Lsn 0/16F9A00 for tenant: 9ef87a5bf0d92544f6fafeeb3239695c. Ancestor timeline: 'main'
-
-# check branches tree
-> cargo neon timeline list
-(L) main [de200bd42b49cc1814412c7e592dd6e9]
-(L) ┗━ @0/16F9A00: migration_check [b3b863fa45fa9e57e615f9f2d944e601]
-
-# create postgres on that branch
-> cargo neon endpoint create migration_check --branch-name migration_check
-
-# start postgres on that branch
-> cargo neon endpoint start migration_check
-Starting new endpoint migration_check (PostgreSQL v14) on timeline b3b863fa45fa9e57e615f9f2d944e601 ...
-Starting postgres at 'postgresql://cloud_admin@127.0.0.1:55434/postgres'
-
-# check the new list of running postgres instances
-> cargo neon endpoint list
- ENDPOINT         ADDRESS          TIMELINE                          BRANCH NAME      LSN        STATUS
- main             127.0.0.1:55432  de200bd42b49cc1814412c7e592dd6e9  main             0/16F9A38  running
- migration_check  127.0.0.1:55434  b3b863fa45fa9e57e615f9f2d944e601  migration_check  0/16F9A70  running
-
-# this new postgres instance will have all the data from 'main' postgres,
-# but all modifications would not affect data in original postgres
-> psql -p 55434 -h 127.0.0.1 -U cloud_admin postgres
-postgres=# select * from t;
- key | value
------+-------
-   1 | 1
-(1 row)
-
-postgres=# insert into t values(2,2);
-INSERT 0 1
-
-# check that the new change doesn't affect the 'main' postgres
-> psql -p 55432 -h 127.0.0.1 -U cloud_admin postgres
-postgres=# select * from t;
- key | value
------+-------
-   1 | 1
-(1 row)
-```
-
-4. If you want to run tests afterwards (see below), you must stop all the running pageserver, safekeeper, and postgres instances
-   you have just started. You can terminate them all with one command:
-```sh
-> cargo neon stop
-```
-
-More advanced usages can be found at [Control Plane and Neon Local](./control_plane/README.md).
-
-#### Handling build failures
-
-If you encounter errors during setting up the initial tenant, it's best to stop everything (`cargo neon stop`) and remove the `.neon` directory. Then fix the problems, and start the setup again.
-
-## Running tests
-
-### Rust unit tests
-
-We are using [`cargo-nextest`](https://nexte.st/) to run the tests in Github Workflows.
-Some crates do not support running plain `cargo test` anymore, prefer `cargo nextest run` instead.
-You can install `cargo-nextest` with `cargo install cargo-nextest`.
-
-### Integration tests
-
-Ensure your dependencies are installed as described [here](https://github.com/neondatabase/neon#dependency-installation-notes).
+## Installation
 
 ```sh
-git clone --recursive https://github.com/neondatabase/neon.git
-
-CARGO_BUILD_FLAGS="--features=testing" make
-
-./scripts/pytest
+npm install git+ssh://git@github.com:srikar298c/neon.git
 ```
 
-By default, this runs both debug and release modes, and all supported postgres versions. When
-testing locally, it is convenient to run just one set of permutations, like this:
+> [!NOTE]
+> Once this package is [published to npm](https://app.stainless.com/docs/guides/publish), this will become: `npm install bms`
 
-```sh
-DEFAULT_PG_VERSION=15 BUILD_TYPE=release ./scripts/pytest
+## Usage
+
+The full API of this library can be found in [api.md](api.md).
+
+<!-- prettier-ignore -->
+```js
+import Bms from 'bms';
+
+const client = new Bms({
+  apiKey: process.env['PETSTORE_API_KEY'], // This is the default and can be omitted
+});
+
+async function main() {
+  const order = await client.store.orders.create({ petId: 1, quantity: 1, status: 'placed' });
+
+  console.log(order.id);
+}
+
+main();
 ```
 
-## Flamegraphs
+### Request & Response types
 
-You may find yourself in need of flamegraphs for software in this repository.
-You can use [`flamegraph-rs`](https://github.com/flamegraph-rs/flamegraph) or the original [`flamegraph.pl`](https://github.com/brendangregg/FlameGraph). Your choice!
+This library includes TypeScript definitions for all request params and response fields. You may import and use them like so:
 
->[!IMPORTANT]
-> If you're using `lld` or `mold`, you need the `--no-rosegment` linker argument.
-> It's a [general thing with Rust / lld / mold](https://crbug.com/919499#c16), not specific to this repository.
-> See [this PR for further instructions](https://github.com/neondatabase/neon/pull/6764).
+<!-- prettier-ignore -->
+```ts
+import Bms from 'bms';
 
-## Cleanup
+const client = new Bms({
+  apiKey: process.env['PETSTORE_API_KEY'], // This is the default and can be omitted
+});
 
-For cleaning up the source tree from build artifacts, run `make clean` in the source directory.
+async function main() {
+  const response: Bms.StoreInventoryResponse = await client.store.inventory();
+}
 
-For removing every artifact from build and configure steps, run `make distclean`, and also consider removing the cargo binaries in the `target` directory, as well as the database in the `.neon` directory. Note that removing the `.neon` directory will remove your database, with all data in it. You have been warned!
+main();
+```
 
-## Documentation
+Documentation for each method, request param, and response field are available in docstrings and will appear on hover in most modern editors.
 
-[docs](/docs) Contains a top-level overview of all available markdown documentation.
+## File uploads
 
-- [sourcetree.md](/docs/sourcetree.md) contains overview of source tree layout.
+Request parameters that correspond to file uploads can be passed in many different forms:
 
-To view your `rustdoc` documentation in a browser, try running `cargo doc --no-deps --open`
+- `File` (or an object with the same structure)
+- a `fetch` `Response` (or an object with the same structure)
+- an `fs.ReadStream`
+- the return value of our `toFile` helper
 
-See also README files in some source directories, and `rustdoc` style documentation comments.
+```ts
+import fs from 'fs';
+import Bms, { toFile } from 'bms';
 
-Other resources:
+const client = new Bms();
 
-- [SELECT 'Hello, World'](https://neon.tech/blog/hello-world/): Blog post by Nikita Shamgunov on the high level architecture
-- [Architecture decisions in Neon](https://neon.tech/blog/architecture-decisions-in-neon/): Blog post by Heikki Linnakangas
-- [Neon: Serverless PostgreSQL!](https://www.youtube.com/watch?v=rES0yzeERns): Presentation on storage system by Heikki Linnakangas in the CMU Database Group seminar series
+// If you have access to Node `fs` we recommend using `fs.createReadStream()`:
+await client.pets.uploadImage(0, { image: fs.createReadStream('/path/to/file') });
 
-### Postgres-specific terms
+// Or if you have the web `File` API you can pass a `File` instance:
+await client.pets.uploadImage(0, { image: new File(['my bytes'], 'file') });
 
-Due to Neon's very close relation with PostgreSQL internals, numerous specific terms are used.
-The same applies to certain spelling: i.e. we use MB to denote 1024 * 1024 bytes, while MiB would be technically more correct, it's inconsistent with what PostgreSQL code and its documentation use.
+// You can also pass a `fetch` `Response`:
+await client.pets.uploadImage(0, { image: await fetch('https://somesite/file') });
 
-To get more familiar with this aspect, refer to:
+// Finally, if none of the above are convenient, you can use our `toFile` helper:
+await client.pets.uploadImage(0, { image: await toFile(Buffer.from('my bytes'), 'file') });
+await client.pets.uploadImage(0, { image: await toFile(new Uint8Array([0, 1, 2]), 'file') });
+```
 
-- [Neon glossary](/docs/glossary.md)
-- [PostgreSQL glossary](https://www.postgresql.org/docs/14/glossary.html)
-- Other PostgreSQL documentation and sources (Neon fork sources can be found [here](https://github.com/neondatabase/postgres))
+## Handling errors
 
-## Join the development
+When the library is unable to connect to the API,
+or if the API returns a non-success status code (i.e., 4xx or 5xx response),
+a subclass of `APIError` will be thrown:
 
-- Read [CONTRIBUTING.md](/CONTRIBUTING.md) to learn about project code style and practices.
-- To get familiar with a source tree layout, use [sourcetree.md](/docs/sourcetree.md).
-- To learn more about PostgreSQL internals, check http://www.interdb.jp/pg/index.html
+<!-- prettier-ignore -->
+```ts
+async function main() {
+  const response = await client.store.inventory().catch(async (err) => {
+    if (err instanceof Bms.APIError) {
+      console.log(err.status); // 400
+      console.log(err.name); // BadRequestError
+      console.log(err.headers); // {server: 'nginx', ...}
+    } else {
+      throw err;
+    }
+  });
+}
+
+main();
+```
+
+Error codes are as followed:
+
+| Status Code | Error Type                 |
+| ----------- | -------------------------- |
+| 400         | `BadRequestError`          |
+| 401         | `AuthenticationError`      |
+| 403         | `PermissionDeniedError`    |
+| 404         | `NotFoundError`            |
+| 422         | `UnprocessableEntityError` |
+| 429         | `RateLimitError`           |
+| >=500       | `InternalServerError`      |
+| N/A         | `APIConnectionError`       |
+
+### Retries
+
+Certain errors will be automatically retried 2 times by default, with a short exponential backoff.
+Connection errors (for example, due to a network connectivity problem), 408 Request Timeout, 409 Conflict,
+429 Rate Limit, and >=500 Internal errors will all be retried by default.
+
+You can use the `maxRetries` option to configure or disable this:
+
+<!-- prettier-ignore -->
+```js
+// Configure the default for all requests:
+const client = new Bms({
+  maxRetries: 0, // default is 2
+});
+
+// Or, configure per-request:
+await client.store.inventory({
+  maxRetries: 5,
+});
+```
+
+### Timeouts
+
+Requests time out after 1 minute by default. You can configure this with a `timeout` option:
+
+<!-- prettier-ignore -->
+```ts
+// Configure the default for all requests:
+const client = new Bms({
+  timeout: 20 * 1000, // 20 seconds (default is 1 minute)
+});
+
+// Override per-request:
+await client.store.inventory({
+  timeout: 5 * 1000,
+});
+```
+
+On timeout, an `APIConnectionTimeoutError` is thrown.
+
+Note that requests which time out will be [retried twice by default](#retries).
+
+## Advanced Usage
+
+### Accessing raw Response data (e.g., headers)
+
+The "raw" `Response` returned by `fetch()` can be accessed through the `.asResponse()` method on the `APIPromise` type that all methods return.
+This method returns as soon as the headers for a successful response are received and does not consume the response body, so you are free to write custom parsing or streaming logic.
+
+You can also use the `.withResponse()` method to get the raw `Response` along with the parsed data.
+Unlike `.asResponse()` this method consumes the body, returning once it is parsed.
+
+<!-- prettier-ignore -->
+```ts
+const client = new Bms();
+
+const response = await client.store.inventory().asResponse();
+console.log(response.headers.get('X-My-Header'));
+console.log(response.statusText); // access the underlying Response object
+
+const { data: response, response: raw } = await client.store.inventory().withResponse();
+console.log(raw.headers.get('X-My-Header'));
+console.log(response);
+```
+
+### Logging
+
+> [!IMPORTANT]
+> All log messages are intended for debugging only. The format and content of log messages
+> may change between releases.
+
+#### Log levels
+
+The log level can be configured in two ways:
+
+1. Via the `BMS_LOG` environment variable
+2. Using the `logLevel` client option (overrides the environment variable if set)
+
+```ts
+import Bms from 'bms';
+
+const client = new Bms({
+  logLevel: 'debug', // Show all log messages
+});
+```
+
+Available log levels, from most to least verbose:
+
+- `'debug'` - Show debug messages, info, warnings, and errors
+- `'info'` - Show info messages, warnings, and errors
+- `'warn'` - Show warnings and errors (default)
+- `'error'` - Show only errors
+- `'off'` - Disable all logging
+
+At the `'debug'` level, all HTTP requests and responses are logged, including headers and bodies.
+Some authentication-related headers are redacted, but sensitive data in request and response bodies
+may still be visible.
+
+#### Custom logger
+
+By default, this library logs to `globalThis.console`. You can also provide a custom logger.
+Most logging libraries are supported, including [pino](https://www.npmjs.com/package/pino), [winston](https://www.npmjs.com/package/winston), [bunyan](https://www.npmjs.com/package/bunyan), [consola](https://www.npmjs.com/package/consola), [signale](https://www.npmjs.com/package/signale), and [@std/log](https://jsr.io/@std/log). If your logger doesn't work, please open an issue.
+
+When providing a custom logger, the `logLevel` option still controls which messages are emitted, messages
+below the configured level will not be sent to your logger.
+
+```ts
+import Bms from 'bms';
+import pino from 'pino';
+
+const logger = pino();
+
+const client = new Bms({
+  logger: logger.child({ name: 'Bms' }),
+  logLevel: 'debug', // Send all messages to pino, allowing it to filter
+});
+```
+
+### Making custom/undocumented requests
+
+This library is typed for convenient access to the documented API. If you need to access undocumented
+endpoints, params, or response properties, the library can still be used.
+
+#### Undocumented endpoints
+
+To make requests to undocumented endpoints, you can use `client.get`, `client.post`, and other HTTP verbs.
+Options on the client, such as retries, will be respected when making these requests.
+
+```ts
+await client.post('/some/path', {
+  body: { some_prop: 'foo' },
+  query: { some_query_arg: 'bar' },
+});
+```
+
+#### Undocumented request params
+
+To make requests using undocumented parameters, you may use `// @ts-expect-error` on the undocumented
+parameter. This library doesn't validate at runtime that the request matches the type, so any extra values you
+send will be sent as-is.
+
+```ts
+client.foo.create({
+  foo: 'my_param',
+  bar: 12,
+  // @ts-expect-error baz is not yet public
+  baz: 'undocumented option',
+});
+```
+
+For requests with the `GET` verb, any extra params will be in the query, all other requests will send the
+extra param in the body.
+
+If you want to explicitly send an extra argument, you can do so with the `query`, `body`, and `headers` request
+options.
+
+#### Undocumented response properties
+
+To access undocumented response properties, you may access the response object with `// @ts-expect-error` on
+the response object, or cast the response object to the requisite type. Like the request params, we do not
+validate or strip extra properties from the response from the API.
+
+### Customizing the fetch client
+
+By default, this library expects a global `fetch` function is defined.
+
+If you want to use a different `fetch` function, you can either polyfill the global:
+
+```ts
+import fetch from 'my-fetch';
+
+globalThis.fetch = fetch;
+```
+
+Or pass it to the client:
+
+```ts
+import Bms from 'bms';
+import fetch from 'my-fetch';
+
+const client = new Bms({ fetch });
+```
+
+### Fetch options
+
+If you want to set custom `fetch` options without overriding the `fetch` function, you can provide a `fetchOptions` object when instantiating the client or making a request. (Request-specific options override client options.)
+
+```ts
+import Bms from 'bms';
+
+const client = new Bms({
+  fetchOptions: {
+    // `RequestInit` options
+  },
+});
+```
+
+#### Configuring proxies
+
+To modify proxy behavior, you can provide custom `fetchOptions` that add runtime-specific proxy
+options to requests:
+
+<img src="https://raw.githubusercontent.com/stainless-api/sdk-assets/refs/heads/main/node.svg" align="top" width="18" height="21"> **Node** <sup>[[docs](https://github.com/nodejs/undici/blob/main/docs/docs/api/ProxyAgent.md#example---proxyagent-with-fetch)]</sup>
+
+```ts
+import Bms from 'bms';
+import * as undici from 'undici';
+
+const proxyAgent = new undici.ProxyAgent('http://localhost:8888');
+const client = new Bms({
+  fetchOptions: {
+    dispatcher: proxyAgent,
+  },
+});
+```
+
+<img src="https://raw.githubusercontent.com/stainless-api/sdk-assets/refs/heads/main/bun.svg" align="top" width="18" height="21"> **Bun** <sup>[[docs](https://bun.sh/guides/http/proxy)]</sup>
+
+```ts
+import Bms from 'bms';
+
+const client = new Bms({
+  fetchOptions: {
+    proxy: 'http://localhost:8888',
+  },
+});
+```
+
+<img src="https://raw.githubusercontent.com/stainless-api/sdk-assets/refs/heads/main/deno.svg" align="top" width="18" height="21"> **Deno** <sup>[[docs](https://docs.deno.com/api/deno/~/Deno.createHttpClient)]</sup>
+
+```ts
+import Bms from 'npm:bms';
+
+const httpClient = Deno.createHttpClient({ proxy: { url: 'http://localhost:8888' } });
+const client = new Bms({
+  fetchOptions: {
+    client: httpClient,
+  },
+});
+```
+
+## Frequently Asked Questions
+
+## Semantic versioning
+
+This package generally follows [SemVer](https://semver.org/spec/v2.0.0.html) conventions, though certain backwards-incompatible changes may be released as minor versions:
+
+1. Changes that only affect static types, without breaking runtime behavior.
+2. Changes to library internals which are technically public but not intended or documented for external use. _(Please open a GitHub issue to let us know if you are relying on such internals.)_
+3. Changes that we do not expect to impact the vast majority of users in practice.
+
+We take backwards-compatibility seriously and work hard to ensure you can rely on a smooth upgrade experience.
+
+We are keen for your feedback; please open an [issue](https://www.github.com/srikar298c/neon/issues) with questions, bugs, or suggestions.
+
+## Requirements
+
+TypeScript >= 4.9 is supported.
+
+The following runtimes are supported:
+
+- Web browsers (Up-to-date Chrome, Firefox, Safari, Edge, and more)
+- Node.js 18 LTS or later ([non-EOL](https://endoflife.date/nodejs)) versions.
+- Deno v1.28.0 or higher.
+- Bun 1.0 or later.
+- Cloudflare Workers.
+- Vercel Edge Runtime.
+- Jest 28 or greater with the `"node"` environment (`"jsdom"` is not supported at this time).
+- Nitro v2.6 or greater.
+
+Note that React Native is not supported at this time.
+
+If you are interested in other runtime environments, please open or upvote an issue on GitHub.
+
+## Contributing
+
+See [the contributing documentation](./CONTRIBUTING.md).
